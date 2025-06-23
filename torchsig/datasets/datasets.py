@@ -485,7 +485,7 @@ class NewTorchSigDataset(Dataset, Seedable):
 
             # generate signal at complex baseband
             new_signal = builder.build()
-
+          
             # apply signal transforms
             new_signal = self.dataset_metadata.impairments.signal_transforms(new_signal)
 

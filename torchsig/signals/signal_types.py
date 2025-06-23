@@ -85,6 +85,7 @@ class SignalMetadata():
         snr_db: float = None,
         class_name: str = None,
         class_index: int = None,
+        pulse_shape: str = None,
     ): 
         """Initializes the SignalMetadata object.
 
@@ -107,6 +108,7 @@ class SignalMetadata():
         self.snr_db = snr_db # snr
         self.class_name = class_name # class modulation name
         self.class_index = class_index # class index wrt class list
+        self.pulse_shape = pulse_shape # pulse shape of signal (as a str)
 
         self.applied_transforms = []
 
@@ -385,7 +387,11 @@ class SignalMetadata():
         )
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(center_freq={self.center_freq}, bandwidth={self.bandwidth}, start_in_samples={self.start_in_samples}, duration_in_samples={self.duration_in_samples}, snr_db={self.snr_db}, class_name={self.class_name}, class_index={self.class_index})"
+        if self.pulse_shape is None:
+            pulse_shape_name = None
+        else:
+            pulse_shape_name = self.pulse_shape.name
+        return f"{self.__class__.__name__}(center_freq={self.center_freq}, bandwidth={self.bandwidth}, start_in_samples={self.start_in_samples}, duration_in_samples={self.duration_in_samples}, snr_db={self.snr_db}, class_name={self.class_name}, class_index={self.class_index}, pulse_shape={pulse_shape_name})"
 
 
 

@@ -102,7 +102,7 @@ def gaussian_taps(samples_per_symbol: int, bt:float, rng=np.random.default_rng()
     return p
 
 
-def fsk_modulator_baseband ( class_name:str, max_num_samples:int, oversampling_rate_nominal:int, rng=np.random.default_rng() ) -> np.ndarray:
+def fsk_modulator_baseband ( class_name:str, max_num_samples:int, oversampling_rate_nominal:int, rng=np.random.default_rng(), pulse_shape_override=None) -> np.ndarray:
     """FSK modulator at baseband.
 
     Args:
@@ -136,15 +136,19 @@ def fsk_modulator_baseband ( class_name:str, max_num_samples:int, oversampling_r
     # determine how many samples are in each symbol
     samples_per_symbol = int(mod_order * oversampling_rate_nominal)
 
-    # rectangular pulse shape
-    pulse_shape = np.ones(samples_per_symbol)
+    if pulse_shape_override is not None:
+        pulse_shape = pulse_shape_override(samples_per_symbol)
 
-    if "g" in class_name: # GMSK, GFSK
-        # design the gaussian pulse shape with the bandwidth as dictated by the oversampling rate
-        #preresample_bandwidth = 1/oversampling_rate_nominal
-        bt = rng.uniform(0.1,0.5) # randomize the time-bandwdith product
-        taps = gaussian_taps(samples_per_symbol, bt, rng)
-        pulse_shape = sp.convolve(taps,pulse_shape)
+    else:
+    # rectangular pulse shape
+        pulse_shape = np.ones(samples_per_symbol)
+
+        if "g" in class_name: # GMSK, GFSK
+            # design the gaussian pulse shape with the bandwidth as dictated by the oversampling rate
+            #preresample_bandwidth = 1/oversampling_rate_nominal
+            bt = rng.uniform(0.1,0.5) # randomize the time-bandwdith product
+            taps = gaussian_taps(samples_per_symbol, bt, rng)
+            pulse_shape = sp.convolve(taps,pulse_shape)
 
     # account for the increase in samples due to convolution of pulse shaping filter
     max_num_samples_minus_pulse_shape = max_num_samples - len(pulse_shape) + 1
@@ -168,7 +172,7 @@ def fsk_modulator_baseband ( class_name:str, max_num_samples:int, oversampling_r
 
     # apply frequency modulation
     modulated = np.exp(phase)
-
+   
     # pad if signal is too long
     if len(modulated) > max_num_samples:
         # slice to max length
@@ -180,7 +184,7 @@ def fsk_modulator_baseband ( class_name:str, max_num_samples:int, oversampling_r
 
     return modulated
 
-def fsk_modulator ( class_name:str, bandwidth:float, sample_rate:float, num_samples:int, rng=np.random.default_rng() ) -> np.ndarray:
+def fsk_modulator ( class_name:str, bandwidth:float, sample_rate:float, num_samples:int, rng=np.random.default_rng(), pulse_shape_override=None) -> np.ndarray:
     """FSK modulator.
 
     Args:
@@ -207,13 +211,13 @@ def fsk_modulator ( class_name:str, bandwidth:float, sample_rate:float, num_samp
 
     # calculate the maximum number of samples to be produced by the baseband modulator
     max_num_samples = int(np.floor(num_samples/resample_rate_ideal))
-
+  
     # ensures a minimum number of samples
     if (max_num_samples < oversampling_rate_nominal):
         max_num_samples = copy(oversampling_rate_nominal)
 
     # modulate the baseband signal
-    baseband_signal = fsk_modulator_baseband ( class_name, max_num_samples, oversampling_rate_nominal, rng )
+    baseband_signal = fsk_modulator_baseband ( class_name, max_num_samples, oversampling_rate_nominal, rng, pulse_shape_override)
 
     # apply resampling
     fsk_correct_bw = multistage_polyphase_resampler ( baseband_signal, resample_rate_ideal )
@@ -245,7 +249,7 @@ class FSKSignalBuilder(SignalBuilder):
     supported_classes = TorchSigSignalLists.fsk_signals
 
     
-    def __init__(self, dataset_metadata: DatasetMetadata, class_name:str = '2fsk', **kwargs):
+    def __init__(self, dataset_metadata: DatasetMetadata, class_name:str = '2fsk', pulse_shapes=None, **kwargs):
         """Initializes FSK Signal Builder. Sets `class_name= "2fsk"`.
 
         Args:
@@ -253,6 +257,8 @@ class FSKSignalBuilder(SignalBuilder):
             class_name (str, optional): Class name.
         """        
         super().__init__(dataset_metadata=dataset_metadata, class_name=class_name, **kwargs)
+        self._pulse_shapes = pulse_shapes
+        
 
     def _update_data(self) -> None:
         """Creates the IQ samples for the FSK waveform based on the signal metadata fields.
@@ -264,14 +270,20 @@ class FSKSignalBuilder(SignalBuilder):
         num_iq_samples_signal = self._signal.metadata.duration_in_samples
         bandwidth = self._signal.metadata.bandwidth
         class_name = self._signal.metadata.class_name
-
+        
+        if self._pulse_shapes is not None:
+            modulated_pulse_shape = self._pulse_shapes[self.uniform_pulse_shape_ix]
+        else:
+            modulated_pulse_shape = None
+        
         # FSK modulator at complex baseband
         self._signal.data = fsk_modulator(
             class_name,
             bandwidth,
             sample_rate,
             num_iq_samples_signal,
-            self.random_generator
+            self.random_generator,
+            modulated_pulse_shape
         )
 
     def _update_metadata(self) -> None:
@@ -282,6 +294,47 @@ class FSKSignalBuilder(SignalBuilder):
         implemented but is not required to create or modify any data
         or fields for this particular signal case.
         """
+        if self._pulse_shapes is not None:
+            self.uniform_pulse_shape_ix = np.random.randint(2)
+            self._signal.metadata.pulse_shape = self._pulse_shapes[self.uniform_pulse_shape_ix].name
 
+
+if __name__ == "__main__":
+    from torchsig.datasets.dataset_metadata import NarrowbandMetadata
+    class PulseShape:
+        def __init__(self, name, pulse_shape):
+            self._name = name
+            self._pulse_shape = pulse_shape
+
+        @property
+        def name(self):
+            return self._name
+        
+        def __call__(self, samples_per_symbol):
+            return self._pulse_shape(samples_per_symbol)
+        
+        def __repr__(self):
+            return f'PulseShape(name={self.name})'
+    test_pulse_shape_1 = PulseShape(name='test1', pulse_shape = lambda x: np.ones(x))
+    test_pulse_shape_2 = PulseShape(name='test2', pulse_shape = lambda x: 0.5*np.ones(x))
+    metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=5000, fft_size=128, impairment_level=0, num_samples=2, fsk_pulse_shapes=[test_pulse_shape_1, test_pulse_shape_2])
+    builder = FSKSignalBuilder(dataset_metadata=metadata)
+        
+    # test_no_override_pulse_shape = PulseShape('test_no_override', pulse_shape = None)
+            
+    # builder = FSKSignalBuilder(dataset_metadata=metadata, pulse_shapes=[test_pulse_shape_1, test_pulse_shape_2])
+    builder = FSKSignalBuilder(dataset_metadata=metadata)
+    from torchsig.datasets.narrowband import NewNarrowband
+    narrow_dataset=NewNarrowband(dataset_metadata=metadata)
+    data, label = narrow_dataset[0]
+    print(data.shape)
+    breakpoint()
+    for i in range(5):
+        print(builder.build().data.shape)
+
+    # for i in range(4):
+    #     signal = builder.build()
+    #     print(signal.data)
+    #     print(signal.metadata.pulse_shape)
 
 

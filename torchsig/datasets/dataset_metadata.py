@@ -25,7 +25,8 @@ from torchsig.transforms.impairments_narrowband import NarrowbandImpairments
 
 # Third Party
 import numpy as np
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Type
+from torchsig.signals.signal_pulse_shapes import PulseShape
 
 # Built-In
 from copy import (
@@ -83,6 +84,7 @@ class DatasetMetadata(Seedable):
         class_distribution: np.ndarray | List[float]= None,
         num_samples: int = None,
         dataset_type: str = "None",
+        fsk_pulse_shapes: List[Type[PulseShape]] | None = None,
         **kwargs
     ):
         """Initializes Dataset Metadata
@@ -150,6 +152,9 @@ class DatasetMetadata(Seedable):
 
         # provide a noise power reference in dB
         self._noise_power_db = 0
+
+        # fsk pulse shapes as input exclusively into FSKSignalBuilder
+        self.fsk_pulse_shapes = fsk_pulse_shapes
 
         # run _verify() to ensure metadata is valid
         self._verify()
@@ -932,6 +937,7 @@ class DatasetMetadata(Seedable):
         """
         epsilon = 1e-10
         return (self.sample_rate/2)*(1-epsilon)
+    
 
 
 
@@ -979,6 +985,7 @@ class NarrowbandMetadata(DatasetMetadata):
         class_list: List[str] = TorchSigSignalLists.all_signals,
         class_distribution = None,
         num_samples: int = None,
+        fsk_pulse_shapes: List[Type[PulseShape]] | None = None,
         **kwargs,
     ):
         """Initializes Narrowband Metadata. Sets `dataset_type="narrowband`.
@@ -1049,6 +1056,7 @@ class NarrowbandMetadata(DatasetMetadata):
             class_distribution=class_distribution,
             num_samples = num_samples,
             dataset_type="narrowband",
+            fsk_pulse_shapes=fsk_pulse_shapes,
             **kwargs
         )
 
