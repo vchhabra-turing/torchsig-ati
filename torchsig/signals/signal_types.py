@@ -316,6 +316,7 @@ class SignalMetadata():
             'upper_freq':self.upper_freq,
             'lower_freq':self.lower_freq,
             'oversampling_rate':self.oversampling_rate,
+            'pulse_shape': self.pulse_shape,
         }
 
     def deepcopy(self) -> SignalMetadata:
@@ -390,7 +391,7 @@ class SignalMetadata():
         if self.pulse_shape is None:
             pulse_shape_name = None
         else:
-            pulse_shape_name = self.pulse_shape.name
+            pulse_shape_name = self.pulse_shape
         return f"{self.__class__.__name__}(center_freq={self.center_freq}, bandwidth={self.bandwidth}, start_in_samples={self.start_in_samples}, duration_in_samples={self.duration_in_samples}, snr_db={self.snr_db}, class_name={self.class_name}, class_index={self.class_index}, pulse_shape={pulse_shape_name})"
 
 
@@ -457,7 +458,7 @@ class DatasetSignal():
         
         if isinstance(signals, (Signal, SignalMetadata)):
             signals = [signals]
-
+        
         for s in signals:
             if isinstance(s, Signal):
                 self.metadata.append(s.metadata)
@@ -466,6 +467,7 @@ class DatasetSignal():
             elif isinstance(s, dict):
                 if dataset_metadata is None:
                     raise ValueError("dataset_metadata required if signals = list of dicts.")
+                
                 self.metadata.append(SignalMetadata(
                     dataset_metadata = dataset_metadata,
                     center_freq = s['center_freq'],
@@ -474,7 +476,8 @@ class DatasetSignal():
                     duration_in_samples = s['duration_in_samples'],
                     snr_db = s['snr_db'],
                     class_name = s['class_name'],
-                    class_index = s['class_index']
+                    class_index = s['class_index'],
+                    pulse_shape= s['pulse_shape']
                 ))
             else:
                 raise ValueError('Metadata type ' + str(type(s)) + ' not supported, metadata = ' + str(s))

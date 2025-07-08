@@ -273,6 +273,7 @@ class FSKSignalBuilder(SignalBuilder):
         bandwidth = self._signal.metadata.bandwidth
         class_name = self._signal.metadata.class_name
         
+        
         if self._pulse_shapes is not None:
             modulated_pulse_shape = self._pulse_shapes[self.uniform_pulse_shape_ix]
         else:
@@ -288,6 +289,7 @@ class FSKSignalBuilder(SignalBuilder):
             self.random_generator,
             modulated_pulse_shape
         )
+        
 
     def _update_metadata(self) -> None:
         """Performs a signals-specific update of signal metadata.
@@ -298,6 +300,7 @@ class FSKSignalBuilder(SignalBuilder):
         or fields for this particular signal case.
         """
         if self._pulse_shapes is not None:
+            
             if len(self._pulse_shapes) > 1:
                 self.uniform_pulse_shape_ix = np.random.randint(len(self._pulse_shapes))
                 self._signal.metadata.pulse_shape = self._pulse_shapes[self.uniform_pulse_shape_ix].name
@@ -328,6 +331,41 @@ if __name__ == "__main__":
         
         def __repr__(self):
             return f'PulseShape(name={self.name})'
+    from torchsig.transforms.dataset_transforms import Transform
+    from torchsig.transforms.target_transforms import PassThrough
+    from torchsig.datasets.dataset_metadata import DatasetMetadata
+    from torchsig.signals import SignalMetadata
+    from typing import List
+    # class DescToFilterType(Transform):
+
+    #     def __init__(self, filter_types):
+    #         super().__init__()
+    #         self.filter_types = filter_types
+    #         self._filter_type_to_index_map = dict(zip(self.filter_types, list(range(len(self.filter_types)))))
+    #         required_metdata=['pulse_shape']
+    #         targets_metadatta=['pulse_shape']
+
+
+    #     def __call__(self, metadata: List[SignalMetadata]):
+            
+    #         filter_names = [y['pulse_shape'] for y in metadata]
+    #         return list(map(self.filter_to_index, filter_names))
+
+    #     def filter_to_index(self, filter):
+    #         return self._filter_type_to_index_map[filter]
+    class DescToFilterType(PassThrough):
+        """Adds `oversampling_rate` from signal metadata
+        """ 
+        def __init__(self, filter_types=None, **kwargs):
+            super().__init__(field = ['pulse_shape'])
+            self.filter_types = filter_types
+            self._filter_type_to_index_map = dict(zip(self.filter_types, list(range(len(self.filter_types)))))
+
+        def __apply__(self, metadata):
+            
+            metadata['pulse_shape'] = self._filter_type_to_index_map[metadata['pulse_shape']]
+            return metadata
+
     test_pulse_shape_1 = PulseShape(name='test1', pulse_shape = lambda x: np.ones(x))
     test_pulse_shape_2 = PulseShape(name='test2', pulse_shape = lambda x: 0.5*np.ones(x))
 
@@ -338,11 +376,11 @@ if __name__ == "__main__":
         pulse_shape_filter_span = int(np.ceil((pulse_shape_filter_length - 1) / (2*samples_per_symbol))) 
         return pulse_shape_filter_span
     
-    rrc1 = PulseShape(name='rrc_0.1', pulse_shape= lambda x: srrc_taps(x, filter_length(x,alpha_rolloff=0.1), 0.1))
-    rrc2 = PulseShape(name='rrc_1.0', pulse_shape= lambda x: srrc_taps(x, filter_length(x,alpha_rolloff=1.0), 1.0))
+    rrc1 = PulseShape(name='rrc_01', pulse_shape= lambda x: srrc_taps(x, filter_length(x,alpha_rolloff=0.1), 0.1))
+    rrc2 = PulseShape(name='rrc_10', pulse_shape= lambda x: srrc_taps(x, filter_length(x,alpha_rolloff=1.0), 1.0))
 
     # metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=5000, fft_size=128, impairment_level=0, num_samples=2, fsk_pulse_shapes=[test_pulse_shape_1, test_pulse_shape_2], transforms=Spectrogram(fft_size=128))
-    metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=20000, fft_size=128, impairment_level=0, num_samples=4, fsk_pulse_shapes=[rrc1], transforms=Spectrogram(fft_size=256))
+    metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=20000, fft_size=128, impairment_level=2, num_samples=10, fsk_pulse_shapes=[rrc1, rrc2], transforms=Spectrogram(fft_size=256), target_transforms=[DescToFilterType(filter_types=['rrc_01', 'rrc_10'])])
     builder = FSKSignalBuilder(dataset_metadata=metadata)
         
     # test_no_override_pulse_shape = PulseShape('test_no_override', pulse_shape = None)
@@ -353,13 +391,14 @@ if __name__ == "__main__":
     narrow_dataset=NewNarrowband(dataset_metadata=metadata)
     from matplotlib import pyplot as plt
     
-    fig, ax = plt.subplots(3,1, layout='constrained')
+    fig, ax = plt.subplots(2,5, figsize=(20,20), layout='constrained')
     ax = ax.ravel()
-    for i in range(3):
+    for i in range(10):
         data, label = narrow_dataset[i]
         ax[i].imshow(data)
-    # plt.tight_layout()
-    plt.suptitle('8 symbols/sample, 256 fft size, RRC 0.1 roll off')
+        ax[i].set_title(str(label))
+    plt.tight_layout()
+    plt.suptitle('8 symbols/sample, 256 fft size, RRC 0.1 and 1.0 roll off \n Level 2 noise')
     # fig.savefig('plots/tight_layout/one_plot_2fsk_example_rrc01_oversamplerate2.png')
     plt.show()
     plt.close('all')
@@ -367,16 +406,4 @@ if __name__ == "__main__":
         # plt.show()
 
  
-    # plt.imshow(data)
-    # plt.show()
-    # print(data.shape)
-    # breakpoint()
-    # for i in range(5):
-    #     print(builder.build().data.shape)
-
-    # for i in range(4):
-    #     signal = builder.build()
-    #     print(signal.data)
-    #     print(signal.metadata.pulse_shape)
-
-
+  

@@ -184,7 +184,7 @@ class SignalBuilder(Builder, Seedable):
 
         # signal object to be returned
         new_signal = self._signal
-
+        
         # ensures IQ data is in complex64
         new_signal.data = new_signal.data.astype(np.complex64)
 
