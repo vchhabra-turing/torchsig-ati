@@ -18,6 +18,7 @@ import numpy as np
 import scipy.signal as sp
 from copy import copy
 
+import torch
 # Built-In
 from collections import OrderedDict
 
@@ -260,6 +261,10 @@ class FSKSignalBuilder(SignalBuilder):
         super().__init__(dataset_metadata=dataset_metadata, class_name=class_name, **kwargs)
         # self._pulse_shapes = pulse_shapes
         self._pulse_shapes = dataset_metadata.fsk_pulse_shapes
+        self.num_samples = dataset_metadata.num_samples
+        generator = torch.Generator().manual_seed(123456789)
+        self.random_ixs = torch.randint(low=0, high=2, generator=generator, size=(self.num_samples,))
+        self.range = list(range(self.num_samples))
         
 
     def _update_data(self) -> None:
@@ -302,7 +307,8 @@ class FSKSignalBuilder(SignalBuilder):
         if self._pulse_shapes is not None:
             
             if len(self._pulse_shapes) > 1:
-                self.uniform_pulse_shape_ix = np.random.randint(len(self._pulse_shapes))
+                # self.uniform_pulse_shape_ix = np.random.randint(len(self._pulse_shapes))
+                self.uniform_pulse_shape_ix = self.random_ixs[self.range.pop()]
                 self._signal.metadata.pulse_shape = self._pulse_shapes[self.uniform_pulse_shape_ix].name
             else:
                 self.uniform_pulse_shape_ix = 0
@@ -376,12 +382,17 @@ if __name__ == "__main__":
         pulse_shape_filter_span = int(np.ceil((pulse_shape_filter_length - 1) / (2*samples_per_symbol))) 
         return pulse_shape_filter_span
     
-    rrc1 = PulseShape(name='rrc_01', pulse_shape= lambda x: srrc_taps(x, filter_length(x,alpha_rolloff=0.1), 0.1))
-    rrc2 = PulseShape(name='rrc_10', pulse_shape= lambda x: srrc_taps(x, filter_length(x,alpha_rolloff=1.0), 1.0))
+    def rrc1_pulse_shape(x):
+        return srrc_taps(x, filter_length(x,alpha_rolloff=0.1), 0.1)
+    
+    def rrc2_pulse_shape(x):
+        return srrc_taps(x, filter_length(x,alpha_rolloff=1.0), 1.0)
+    
+    rrc1 = PulseShape(name='rrc_01', pulse_shape=rrc1_pulse_shape)
+    rrc2 = PulseShape(name='rrc_10', pulse_shape=rrc2_pulse_shape)
 
     # metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=5000, fft_size=128, impairment_level=0, num_samples=2, fsk_pulse_shapes=[test_pulse_shape_1, test_pulse_shape_2], transforms=Spectrogram(fft_size=128))
     metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=20000, fft_size=128, impairment_level=2, num_samples=10, fsk_pulse_shapes=[rrc1, rrc2], transforms=Spectrogram(fft_size=256), target_transforms=[DescToFilterType(filter_types=['rrc_01', 'rrc_10'])])
-    builder = FSKSignalBuilder(dataset_metadata=metadata)
         
     # test_no_override_pulse_shape = PulseShape('test_no_override', pulse_shape = None)
             
@@ -390,11 +401,34 @@ if __name__ == "__main__":
     from torchsig.datasets.narrowband import NewNarrowband
     narrow_dataset=NewNarrowband(dataset_metadata=metadata)
     from matplotlib import pyplot as plt
+    import torch
+
+    class TestDataset(torch.utils.data.Dataset):
+        def __init__(self, dataset):
+            self.dataset = dataset
+            
+        def __len__(self):
+            return len(self.dataset)
+        
+        def __getitem__(self, ix):
+            data, label = self.dataset[ix]
+            return data.copy(), label
+        
+    from torch.utils.data import DataLoader
+
+    test_dataloader = DataLoader(dataset=TestDataset(dataset=narrow_dataset), num_workers=2, batch_size=4)
+
+    for batch,labels in test_dataloader:
+        print(labels)
+    breakpoint()
+
+        
     
     fig, ax = plt.subplots(2,5, figsize=(20,20), layout='constrained')
     ax = ax.ravel()
     for i in range(10):
         data, label = narrow_dataset[i]
+        breakpoint()
         ax[i].imshow(data)
         ax[i].set_title(str(label))
     plt.tight_layout()
