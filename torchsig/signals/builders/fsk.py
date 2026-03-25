@@ -74,6 +74,7 @@ def get_fsk_mod_index( class_name:str, rng=np.random.default_rng() ) -> float:
         # MSK, GMSK
         mod_idx = 0.5
     else: # FSK
+        
         # 50% chance to use mod index of 1 (orthogonal) ...
         if rng.uniform(0,1) < 0.5:
             mod_idx = 1
@@ -82,6 +83,7 @@ def get_fsk_mod_index( class_name:str, rng=np.random.default_rng() ) -> float:
             # a modulation index both less than 1 and greater
             # than 1 to train over a variety of parameters
             mod_idx = rng.uniform(0.7,1.1)
+        mod_idx = 1 #TODO: REMEMBER THIS IS HARD SET. REMOVE AFTER USE.
     return mod_idx
 
 def gaussian_taps(samples_per_symbol: int, bt:float, rng=np.random.default_rng()) -> np.ndarray:
@@ -372,13 +374,26 @@ if __name__ == "__main__":
             metadata['pulse_shape'] = self._filter_type_to_index_map[metadata['pulse_shape']]
             return metadata
 
+    from scipy.signal import firwin
+    def dave_pulse(samples_per_symbol=1, modify=True):
+        bw = 20*1/samples_per_symbol
+        cutoff = bw*1.2
+        print(f'cutoff is {cutoff} with {samples_per_symbol}')
+        filter = firwin(40*samples_per_symbol + 1, cutoff, fs=100)
+        if modify:
+            filter[37*samples_per_symbol] = 9.254e-02
+            filter[39*samples_per_symbol] = -9.254e-02
+        return filter
+
+    
+
     test_pulse_shape_1 = PulseShape(name='test1', pulse_shape = lambda x: np.ones(x))
     test_pulse_shape_2 = PulseShape(name='test2', pulse_shape = lambda x: 0.5*np.ones(x))
 
-
+    dave_pulse_shape = PulseShape(name='dave_pulse', pulse_shape=lambda x: dave_pulse(x))
     def filter_length(samples_per_symbol, alpha_rolloff=0.1):
         attenuation_db = 120
-        pulse_shape_filter_length = estimate_filter_length(alpha_rolloff,attenuation_db,1)
+        pulse_shape_filter_length = estimate_filter_length(alpha_rolloff,attenuation_db,1e2)
         pulse_shape_filter_span = int(np.ceil((pulse_shape_filter_length - 1) / (2*samples_per_symbol))) 
         return pulse_shape_filter_span
     
@@ -392,7 +407,7 @@ if __name__ == "__main__":
     rrc2 = PulseShape(name='rrc_10', pulse_shape=rrc2_pulse_shape)
 
     # metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=5000, fft_size=128, impairment_level=0, num_samples=2, fsk_pulse_shapes=[test_pulse_shape_1, test_pulse_shape_2], transforms=Spectrogram(fft_size=128))
-    metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=20000, fft_size=128, impairment_level=2, num_samples=10, fsk_pulse_shapes=[rrc1, rrc2], transforms=Spectrogram(fft_size=256), target_transforms=[DescToFilterType(filter_types=['rrc_01', 'rrc_10'])])
+    metadata = NarrowbandMetadata(class_list=['2fsk'], num_iq_samples_dataset=20000, fft_size=128, sample_rate=1e2, impairment_level=0, num_samples=10, signal_bandwidth_max=50,signal_bandwidth_min=50, fsk_pulse_shapes=[rrc2, dave_pulse_shape], transforms=Spectrogram(fft_size=256), target_transforms=[DescToFilterType(filter_types=['rrc_10', 'dave_pulse'])])
         
     # test_no_override_pulse_shape = PulseShape('test_no_override', pulse_shape = None)
             
@@ -414,13 +429,13 @@ if __name__ == "__main__":
             data, label = self.dataset[ix]
             return data.copy(), label
         
-    from torch.utils.data import DataLoader
+    # from torch.utils.data import DataLoader
 
-    test_dataloader = DataLoader(dataset=TestDataset(dataset=narrow_dataset), num_workers=2, batch_size=4)
+    # test_dataloader = DataLoader(dataset=TestDataset(dataset=narrow_dataset), num_workers=2, batch_size=4)
 
-    for batch,labels in test_dataloader:
-        print(labels)
-    breakpoint()
+    # for batch,labels in test_dataloader:
+    #     print(labels)
+    # breakpoint()
 
         
     
@@ -428,14 +443,25 @@ if __name__ == "__main__":
     ax = ax.ravel()
     for i in range(10):
         data, label = narrow_dataset[i]
-        breakpoint()
         ax[i].imshow(data)
         ax[i].set_title(str(label))
     plt.tight_layout()
-    plt.suptitle('8 symbols/sample, 256 fft size, RRC 0.1 and 1.0 roll off \n Level 2 noise')
+    plt.suptitle("256fft, RRC 1.0 (Label 0) and Dave's pulse (Label 1)")
+    # plt.suptitle('8 symbols/sample, 256 fft size, RRC 0.1 and 1.0 roll off \n Level 2 noise')
     # fig.savefig('plots/tight_layout/one_plot_2fsk_example_rrc01_oversamplerate2.png')
     plt.show()
     plt.close('all')
+
+    fig, ax = plt.subplots(2,1, figsize=(20,20), layout='constrained')
+    ax = ax.ravel()
+    ax[0].plot(dave_pulse(4))
+    ax[0].set_title("Modified two taps")
+    ax[1].plot(dave_pulse(4, modify=False))
+    ax[1].set_title('Standard pulse')
+    # for i in range(1,5):
+    #     ax[i-1].plot(dave_pulse(1))
+    #     ax[i-1].set_title(f'Samples/Symbol {i}')
+    plt.show()
         # plt.imshow(data)
         # plt.show()
 
